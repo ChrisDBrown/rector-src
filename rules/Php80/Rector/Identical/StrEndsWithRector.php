@@ -94,14 +94,38 @@ CODE_SAMPLE
         }
 
         $haystack = $substrFuncCall->args[0]->value;
+        $needle = $substrFuncCall->args[1]->value;
+        $isPositive = $binaryOp instanceof Identical;
 
-        $needle = $this->matchUnaryMinusStrlenFuncCallArgValue($substrFuncCall->args[1]->value);
-        if (! $this->nodeComparator->areNodesEqual($needle, $comparedNeedleExpr)) {
-            return null;
+        $minusStrLenFuncCallMatch = $this->matchUnaryMinusStrlenFuncCallArgValue($needle);
+        if ($this->nodeComparator->areNodesEqual($minusStrLenFuncCallMatch, $comparedNeedleExpr)) {
+            return $this->buildReturnNode($haystack, $minusStrLenFuncCallMatch, $isPositive);
         }
 
-        $isPositive = $binaryOp instanceof Identical;
-        return $this->buildReturnNode($haystack, $needle, $isPositive);
+        if ($this->isNegatedComparatorStringLengthMatch($needle, $comparedNeedleExpr)) {
+            return $this->buildReturnNode($haystack, $comparedNeedleExpr, $isPositive);
+        }
+
+        return null;
+    }
+
+    private function isNegatedComparatorStringLengthMatch(Node $needle, Expr $comparedExpr): bool
+    {
+        if (! $needle instanceof UnaryMinus) {
+            return false;
+        }
+
+        $comparedValue = $this->valueResolver->getValue($comparedExpr);
+
+        if (! is_string($comparedValue)) {
+            return false;
+        }
+
+        if (-strlen($comparedValue) !== $this->valueResolver->getValue($needle)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function refactorSubstrCompare(BinaryOp $binaryOp): FuncCall | BooleanNot | null
@@ -119,15 +143,14 @@ CODE_SAMPLE
         $substrCompareFuncCall = $funcCallAndExpr->getFuncCall();
         $haystack = $substrCompareFuncCall->args[0]->value;
         $needle = $substrCompareFuncCall->args[1]->value;
-
-        $comparedNeedleExpr = $this->matchUnaryMinusStrlenFuncCallArgValue($substrCompareFuncCall->args[2]->value);
-        if (! $this->nodeComparator->areNodesEqual($needle, $comparedNeedleExpr)) {
-            return null;
-        }
-
         $isPositive = $binaryOp instanceof Identical;
 
-        return $this->buildReturnNode($haystack, $needle, $isPositive);
+        $minusStrLenFuncCallMatch = $this->matchUnaryMinusStrlenFuncCallArgValue($substrCompareFuncCall->args[2]->value);
+        if ($this->nodeComparator->areNodesEqual($needle, $minusStrLenFuncCallMatch)) {
+            return $this->buildReturnNode($haystack, $needle, $isPositive);
+        }
+
+        return null;
     }
 
     private function matchUnaryMinusStrlenFuncCallArgValue(Node $node): ?Expr
